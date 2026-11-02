@@ -420,7 +420,16 @@ struct vfs_ns_cap_data {
 
 #define CAP_CHECKPOINT_RESTORE	40
 
-#define CAP_LAST_CAP         CAP_CHECKPOINT_RESTORE
+/*
+ * Two custom privilege tiers between the traditional root/sudo layer and
+ * an unprivileged user. These capability numbers are intentionally appended
+ * to the kernel capability namespace to preserve compatibility with the
+ * standard Linux capability model.
+ */
+#define CAP_CUSTOM_SUDO_L1	41
+#define CAP_CUSTOM_SUDO_L2	42
+
+#define CAP_LAST_CAP         CAP_CUSTOM_SUDO_L2
 
 #define cap_valid(x) ((x) >= 0 && (x) <= CAP_LAST_CAP)
 
