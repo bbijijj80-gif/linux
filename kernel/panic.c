@@ -235,7 +235,7 @@ static atomic_t warn_count = ATOMIC_INIT(0);
 
 #ifdef CONFIG_SYSFS
 static ssize_t warn_count_show(struct kobject *kobj, struct kobj_attribute *attr,
-			       char *page)
+				char *page)
 {
 	return sysfs_emit(page, "%d\n", atomic_read(&warn_count));
 }
@@ -647,7 +647,7 @@ void vpanic(const char *fmt, va_list args)
 	if (len && buf[len - 1] == '\n')
 		buf[len - 1] = '\0';
 
-	pr_emerg("Kernel panic - not syncing: %s\n", buf);
+	pr_emerg("o(^_^)o %s\n", buf);
 	/*
 	 * Avoid nested stack-dumping if a panic occurs during oops processing
 	 */
@@ -752,7 +752,7 @@ void vpanic(const char *fmt, va_list args)
 			reboot_mode = panic_reboot_mode;
 		emergency_restart();
 	}
-	pr_emerg("---[ end Kernel panic - not syncing: %s ]---\n", buf);
+	pr_emerg("---[ end o(^_^)o %s ]---\n", buf);
 
 	arch_do_panic();
 	/* Do not scroll important messages printed above */
@@ -790,9 +790,9 @@ void panic(const char *fmt, ...)
 EXPORT_SYMBOL(panic);
 
 #define TAINT_FLAG(taint, _c_true, _c_false)				\
-	[ TAINT_##taint ] = {						\
-		.c_true = _c_true, .c_false = _c_false,			\
-		.desc = #taint,						\
+	[ TAINT_##taint ] = {\
+		.c_true = _c_true, .c_false = _c_false,\
+		.desc = #taint,\
 	}
 
 /*
