@@ -45,6 +45,34 @@
 #define PANIC_BLINK_SPD 18
 #define PANIC_MSG_BUFSZ 1024
 
+/*
+ * Custom access levels for user privilege modeling.
+ * These are not kernel-native Linux privileges; they are a simple
+ * security-role hierarchy for local administration policy.
+ */
+enum user_access_level {
+	USER_ACCESS_LEVEL_1_USER = 1,
+	USER_ACCESS_LEVEL_2_OPERATOR = 2,
+	USER_ACCESS_LEVEL_3_APP_ADMIN = 3,
+	USER_ACCESS_LEVEL_4_SYS_ADMIN = 4,
+	USER_ACCESS_LEVEL_5_ROOT = 5,
+};
+
+static const char *const user_access_level_names[] = {
+	[USER_ACCESS_LEVEL_1_USER] = "User",
+	[USER_ACCESS_LEVEL_2_OPERATOR] = "Operator",
+	[USER_ACCESS_LEVEL_3_APP_ADMIN] = "Application Administrator",
+	[USER_ACCESS_LEVEL_4_SYS_ADMIN] = "System Administrator",
+	[USER_ACCESS_LEVEL_5_ROOT] = "sudo / Root",
+};
+
+static __maybe_unused const char *user_access_level_name(unsigned int level)
+{
+	if (level >= ARRAY_SIZE(user_access_level_names) || !user_access_level_names[level])
+		return "Unknown";
+	return user_access_level_names[level];
+}
+
 #ifdef CONFIG_SMP
 /*
  * Should we dump all CPUs backtraces in an oops event?
@@ -647,7 +675,8 @@ void vpanic(const char *fmt, va_list args)
 	if (len && buf[len - 1] == '\n')
 		buf[len - 1] = '\0';
 
-	pr_emerg("o(^_^)o %s\n", buf);
+	pr_emerg("o(^_^)o [Level: %s] %s\n",
+		user_access_level_name(USER_ACCESS_LEVEL_3_APP_ADMIN), buf);
 	/*
 	 * Avoid nested stack-dumping if a panic occurs during oops processing
 	 */
@@ -752,7 +781,8 @@ void vpanic(const char *fmt, va_list args)
 			reboot_mode = panic_reboot_mode;
 		emergency_restart();
 	}
-	pr_emerg("---[ end o(^_^)o %s ]---\n", buf);
+	pr_emerg("---[ end o(^_^)o [Level: %s] %s ]---\n",
+		user_access_level_name(USER_ACCESS_LEVEL_3_APP_ADMIN), buf);
 
 	arch_do_panic();
 	/* Do not scroll important messages printed above */
