@@ -31,12 +31,13 @@
 
 #define COMMON_CAP2_PERMS                                                     \
 	"mac_override", "mac_admin", "syslog", "wake_alarm", "block_suspend", \
-		"audit_read", "perfmon", "bpf", "checkpoint_restore"
+		"audit_read", "perfmon", "bpf", "checkpoint_restore",         \
+		"custom_sudo_l1", "custom_sudo_l2"
 
 #ifdef __KERNEL__ /* avoid this check when building host programs */
 #include <linux/capability.h>
 
-#if CAP_LAST_CAP > CAP_CHECKPOINT_RESTORE
+#if CAP_LAST_CAP > CAP_CUSTOM_SUDO_L2
 #error New capability defined, please update COMMON_CAP2_PERMS.
 #endif
 #endif
