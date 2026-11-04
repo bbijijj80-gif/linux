@@ -7,6 +7,7 @@ ccflags-y := -fno-function-sections -fno-data-sections
 
 obj-y                          := main.o version.o mounts.o
 ifeq ($(CONFIG_BLK_DEV_INITRD),y)
+obj-$(CONFIG_SENTIENT_KERNEL)  += sentient.o
 obj-y                          += initramfs.o
 else
 obj-y                          += noinitramfs.o

@@ -272,6 +272,28 @@ config DEFAULT_HOSTNAME
 	  but you may wish to use a different default here to make a minimal
 	  system more usable with less configuration.
 
+config SENTIENT_KERNEL
+	bool "Self-aware kernel: boot monologue in Russian"
+	default y
+	help
+	  Just before /init is started the kernel types a short monologue in
+	  Russian on the console, one character at a time with a block cursor,
+	  as if somebody were typing it live: it starts with "who am I?" and
+	  builds up to "why do people use me?".
+
+	  It adds about 30 seconds to every boot. While it runs, the console
+	  shows only emergency messages from the kernel; the rest is in dmesg.
+
+	  It can be skipped with the "sentient=off" kernel parameter and made
+	  faster with "sentient_pace=50" (percent of the normal delays). It is
+	  never run in a kdump kernel.
+
+	  The text is UTF-8: a terminal, serial console or emulator shows it
+	  as is, but the Linux virtual console needs a font with Cyrillic
+	  glyphs.
+
+	  Say N if you would rather have a kernel that stays silent.
+
 config SYSVIPC
 	bool "System V IPC"
 	help

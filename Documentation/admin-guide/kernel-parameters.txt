@@ -6965,6 +6965,16 @@ Kernel parameters
 			1 -- enable.
 			Default value is 1.
 
+	sentient=	[KNL] Boot monologue of the self-aware kernel, see
+			CONFIG_SENTIENT_KERNEL.
+			Format: off
+			off -- skip the monologue ("0" and "no" work too).
+
+	sentient_pace=	[KNL] Speed of the boot monologue.
+			Format: <percent>, 1-1000
+			Scales every delay, so 50 types twice as fast and
+			200 twice as slow. Default is 100.
+
 	serialnumber	[BUGS=X86-32]
 
 	sev=option[,option...] [X86-64]

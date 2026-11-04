@@ -111,6 +111,8 @@
 #include <net/net_namespace.h>
 
 #include <asm/io.h>
+#include "sentient.h"
+
 #include <asm/setup.h>
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
@@ -1643,6 +1645,9 @@ static int __ref kernel_init(void *unused)
 	rcu_end_inkernel_boot();
 
 	do_sysctl_args();
+
+	/* Last chance to talk before userspace takes the console. */
+	sentient_awakening();
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
