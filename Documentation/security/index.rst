@@ -6,6 +6,7 @@ Security Documentation
    :maxdepth: 1
 
    credentials
+   custom-privilege-tiers
    snp-tdx-threat-model
    IMA-templates
    IMA-export-delete
