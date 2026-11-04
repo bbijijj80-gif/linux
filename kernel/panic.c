@@ -31,6 +31,7 @@
 #include <linux/nmi.h>
 #include <linux/console.h>
 #include <linux/bug.h>
+#include <linux/cap_tier.h>
 #include <linux/capability.h>
 #include <linux/cred.h>
 #include <linux/ratelimit.h>
@@ -76,25 +77,30 @@ static const char *user_access_level_name(unsigned int level)
 }
 
 /*
- * Derive the access level of @cred from its effective capabilities:
+ * Derive the access level of @cred.  Levels 2 and 3 are real privilege tiers
+ * enforced by cap_capable(), see <linux/cap_tier.h>:
  *
  *   CAP_SYS_ADMIN + euid 0   -> sudo / Root
  *   CAP_SYS_ADMIN            -> System Administrator
- *   CAP_CUSTOM_SUDO_L2       -> Application Administrator
- *   CAP_CUSTOM_SUDO_L1       -> Operator
+ *   tier 2                   -> Application Administrator
+ *   tier 1                   -> Operator
  *   anything else            -> User
  *
- * This is a plain bit test on @cred: no locks, no allocation and no audit
- * record, so it is safe to call from the panic path.
+ * This only reads @cred: no locks, no allocation and no audit record, so it
+ * is safe to call from the panic path.
  */
 static enum user_access_level user_access_level_of(const struct cred *cred)
 {
+	int tier;
+
 	if (cap_raised(cred->cap_effective, CAP_SYS_ADMIN))
 		return uid_eq(cred->euid, GLOBAL_ROOT_UID) ?
 			USER_ACCESS_LEVEL_5_ROOT : USER_ACCESS_LEVEL_4_SYS_ADMIN;
-	if (cap_raised(cred->cap_effective, CAP_CUSTOM_SUDO_L2))
+
+	tier = cap_custom_tier(cred);
+	if (tier >= 2)
 		return USER_ACCESS_LEVEL_3_APP_ADMIN;
-	if (cap_raised(cred->cap_effective, CAP_CUSTOM_SUDO_L1))
+	if (tier == 1)
 		return USER_ACCESS_LEVEL_2_OPERATOR;
 	return USER_ACCESS_LEVEL_1_USER;
 }

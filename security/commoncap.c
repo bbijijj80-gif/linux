@@ -3,6 +3,7 @@
  */
 
 #include <linux/capability.h>
+#include <linux/cap_tier.h>
 #include <linux/audit.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -25,6 +26,7 @@
 #include <linux/binfmts.h>
 #include <linux/personality.h>
 #include <linux/mnt_idmapping.h>
+#include <linux/sysctl.h>
 #include <uapi/linux/lsm.h>
 
 #define CREATE_TRACE_POINTS
@@ -49,6 +51,93 @@ static void warn_setuid_and_fcaps_mixed(const char *fname)
 			" effective capabilities. Therefore not raising all"
 			" capabilities.\n", fname);
 		warned = 1;
+	}
+}
+
+/*
+ * Groups whose members are put in tier 1 / tier 2, see <linux/cap_tier.h>.
+ * (unsigned int)-1 means "no group", which is the default.
+ */
+#define CAP_TIER_NO_GID	((unsigned int)-1)
+static unsigned int cap_tier_gid[2] = { CAP_TIER_NO_GID, CAP_TIER_NO_GID };
+
+#ifdef CONFIG_SYSCTL
+static const struct ctl_table cap_tier_sysctls[] = {
+	{
+		.procname	= "custom_sudo_l1_gid",
+		.data		= &cap_tier_gid[0],
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec,
+	},
+	{
+		.procname	= "custom_sudo_l2_gid",
+		.data		= &cap_tier_gid[1],
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec,
+	},
+};
+
+static int __init cap_tier_sysctl_init(void)
+{
+	register_sysctl_init("kernel", cap_tier_sysctls);
+	return 0;
+}
+late_initcall(cap_tier_sysctl_init);
+#endif
+
+static bool cap_tier_in_group(const struct cred *cred, unsigned int gid)
+{
+	kgid_t kgid;
+
+	if (gid == CAP_TIER_NO_GID)
+		return false;
+
+	kgid = KGIDT_INIT(gid);
+	return gid_eq(cred->egid, kgid) || groups_search(cred->group_info, kgid);
+}
+
+int cap_custom_tier(const struct cred *cred)
+{
+	int tier = 0;
+
+	if (cap_raised(cred->cap_effective, CAP_CUSTOM_SUDO_L2))
+		return 2;
+	if (cap_raised(cred->cap_effective, CAP_CUSTOM_SUDO_L1))
+		tier = 1;
+
+	/*
+	 * Group based tiers only exist in the initial user namespace: a task
+	 * in a child namespace never gets rights over the host through them.
+	 */
+	if (cred->user_ns != &init_user_ns)
+		return tier;
+
+	if (cap_tier_in_group(cred, READ_ONCE(cap_tier_gid[1])))
+		return 2;
+	if (!tier && cap_tier_in_group(cred, READ_ONCE(cap_tier_gid[0])))
+		tier = 1;
+
+	return tier;
+}
+
+/* Does the tier of @cred grant @cap although it is not in cap_effective? */
+static bool cap_tier_grants(const struct cred *cred, int cap)
+{
+	u64 bit = BIT_ULL(cap);
+
+	/* Cheap exit: nearly every capability is outside both tiers. */
+	if (!(bit & CAP_TIER_L2_MASK))
+		return false;
+
+	switch (cap_custom_tier(cred)) {
+	case 2:
+		return bit & CAP_TIER_L2_MASK;
+	case 1:
+		return bit & CAP_TIER_L1_MASK;
+	default:
+		return false;
 	}
 }
 
@@ -78,8 +167,11 @@ static inline int cap_capable_helper(const struct cred *cred,
 	 */
 	for (;;) {
 		/* Do we have the necessary capabilities? */
-		if (likely(ns == cred_ns))
-			return cap_raised(cred->cap_effective, cap) ? 0 : -EPERM;
+		if (likely(ns == cred_ns)) {
+			if (cap_raised(cred->cap_effective, cap))
+				return 0;
+			return cap_tier_grants(cred, cap) ? 0 : -EPERM;
+		}
 
 		/*
 		 * If we're already at a lower level than we're looking for,
