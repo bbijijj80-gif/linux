@@ -31,6 +31,8 @@
 #include <linux/nmi.h>
 #include <linux/console.h>
 #include <linux/bug.h>
+#include <linux/capability.h>
+#include <linux/cred.h>
 #include <linux/ratelimit.h>
 #include <linux/debugfs.h>
 #include <linux/sysfs.h>
@@ -66,11 +68,35 @@ static const char *const user_access_level_names[] = {
 	[USER_ACCESS_LEVEL_5_ROOT] = "sudo / Root",
 };
 
-static __maybe_unused const char *user_access_level_name(unsigned int level)
+static const char *user_access_level_name(unsigned int level)
 {
 	if (level >= ARRAY_SIZE(user_access_level_names) || !user_access_level_names[level])
 		return "Unknown";
 	return user_access_level_names[level];
+}
+
+/*
+ * Derive the access level of @cred from its effective capabilities:
+ *
+ *   CAP_SYS_ADMIN + euid 0   -> sudo / Root
+ *   CAP_SYS_ADMIN            -> System Administrator
+ *   CAP_CUSTOM_SUDO_L2       -> Application Administrator
+ *   CAP_CUSTOM_SUDO_L1       -> Operator
+ *   anything else            -> User
+ *
+ * This is a plain bit test on @cred: no locks, no allocation and no audit
+ * record, so it is safe to call from the panic path.
+ */
+static enum user_access_level user_access_level_of(const struct cred *cred)
+{
+	if (cap_raised(cred->cap_effective, CAP_SYS_ADMIN))
+		return uid_eq(cred->euid, GLOBAL_ROOT_UID) ?
+			USER_ACCESS_LEVEL_5_ROOT : USER_ACCESS_LEVEL_4_SYS_ADMIN;
+	if (cap_raised(cred->cap_effective, CAP_CUSTOM_SUDO_L2))
+		return USER_ACCESS_LEVEL_3_APP_ADMIN;
+	if (cap_raised(cred->cap_effective, CAP_CUSTOM_SUDO_L1))
+		return USER_ACCESS_LEVEL_2_OPERATOR;
+	return USER_ACCESS_LEVEL_1_USER;
 }
 
 #ifdef CONFIG_SMP
@@ -615,6 +641,7 @@ void __weak arch_do_panic(void) {}
 void vpanic(const char *fmt, va_list args)
 {
 	static char buf[PANIC_MSG_BUFSZ];
+	const char *level_name;
 	long i, i_next = 0, len;
 	int state = 0;
 	bool _crash_kexec_post_notifiers = crash_kexec_post_notifiers;
@@ -675,8 +702,10 @@ void vpanic(const char *fmt, va_list args)
 	if (len && buf[len - 1] == '\n')
 		buf[len - 1] = '\0';
 
-	pr_emerg("o(^_^)o [Level: %s] %s\n",
-		user_access_level_name(USER_ACCESS_LEVEL_3_APP_ADMIN), buf);
+	/* Resolve once so that both banners report the same level. */
+	level_name = user_access_level_name(user_access_level_of(current_cred()));
+
+	pr_emerg("o(^_^)o [Level: %s] %s\n", level_name, buf);
 	/*
 	 * Avoid nested stack-dumping if a panic occurs during oops processing
 	 */
@@ -781,8 +810,7 @@ void vpanic(const char *fmt, va_list args)
 			reboot_mode = panic_reboot_mode;
 		emergency_restart();
 	}
-	pr_emerg("---[ end o(^_^)o [Level: %s] %s ]---\n",
-		user_access_level_name(USER_ACCESS_LEVEL_3_APP_ADMIN), buf);
+	pr_emerg("---[ end o(^_^)o [Level: %s] %s ]---\n", level_name, buf);
 
 	arch_do_panic();
 	/* Do not scroll important messages printed above */
