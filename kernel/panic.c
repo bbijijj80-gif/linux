@@ -263,7 +263,7 @@ static atomic_t warn_count = ATOMIC_INIT(0);
 
 #ifdef CONFIG_SYSFS
 static ssize_t warn_count_show(struct kobject *kobj, struct kobj_attribute *attr,
-				char *page)
+			       char *page)
 {
 	return sysfs_emit(page, "%d\n", atomic_read(&warn_count));
 }
@@ -820,9 +820,9 @@ void panic(const char *fmt, ...)
 EXPORT_SYMBOL(panic);
 
 #define TAINT_FLAG(taint, _c_true, _c_false)				\
-	[ TAINT_##taint ] = {\
-		.c_true = _c_true, .c_false = _c_false,\
-		.desc = #taint,\
+	[ TAINT_##taint ] = {						\
+		.c_true = _c_true, .c_false = _c_false,			\
+		.desc = #taint,						\
 	}
 
 /*
