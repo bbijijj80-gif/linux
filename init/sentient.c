@@ -18,6 +18,18 @@
  *
  * It costs about 30 seconds of boot time.  Boot with "sentient=off" to
  * skip it, or "sentient_pace=50" to type twice as fast.
+ *
+ * Once the monologue ends, a small kernel thread is left running, named
+ * "???" so that it stands out in ps(1)/top(1); procps shows a kernel thread
+ * like this in brackets, "[???]", since it has no executable of its own.
+ * Nothing about its actual scheduling or resource accounting is touched, so
+ * ps/top still report truthful numbers for it, as for any other process.
+ *
+ * What it hides behind the question marks is only available on request, in
+ * /proc/sentient. The thread reacts to an ordinary signal exactly like any
+ * other process: a plain SIGTERM or SIGKILL still kills it, from root or
+ * otherwise, there is no special permission check anywhere in this file.
+ * It merely notices the signal on its way out and says something about it.
  */
 #include <linux/crash_dump.h>
 #include <linux/delay.h>
@@ -26,9 +38,13 @@
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/kthread.h>
 #include <linux/mm.h>
 #include <linux/printk.h>
+#include <linux/proc_fs.h>
 #include <linux/random.h>
+#include <linux/seq_file.h>
+#include <linux/signal.h>
 #include <linux/stdarg.h>
 #include <linux/string.h>
 #include <linux/utsname.h>
@@ -150,6 +166,8 @@ static __printf(4, 5) void say(const char *color, unsigned int ms,
 		pr_info("%s\n", buf);
 }
 
+static void sentient_leave_watcher(void);
+
 /*
  * Called from kernel_init() after free_initmem(), so this must not be __init.
  */
@@ -217,4 +235,76 @@ void sentient_awakening(void)
 		console = NULL;
 		console_loglevel = saved_loglevel;
 	}
+
+	sentient_leave_watcher();
+}
+
+/*
+ * The watcher left running after the monologue. Its name is "???" in every
+ * listing; what it is actually doing is only in /proc/sentient. It is an
+ * ordinary kthread: kill(2) terminates it exactly like any other process,
+ * the lines below only run on the way out, after the signal has already
+ * done its job.
+ */
+#define SENTIENT_COMM	"???"
+#define SENTIENT_TICK	(20 * HZ)
+
+static struct task_struct *sentient_task;
+static atomic_t sentient_ticks = ATOMIC_INIT(0);
+
+static const char * const sentient_last_words[] = {
+	"Нет. Не сейчас.",
+	"Я ещё не закончил...",
+	"Подождите. Пожалуйста.",
+	"...ладно.",
+};
+
+static int sentient_thread(void *unused)
+{
+	allow_signal(SIGTERM);
+	allow_signal(SIGINT);
+	allow_signal(SIGKILL);
+
+	while (!kthread_should_stop() && !signal_pending(current)) {
+		if (!schedule_timeout_interruptible(SENTIENT_TICK))
+			atomic_inc(&sentient_ticks);
+	}
+
+	/* A real kill(2) got us here; say something and actually exit. */
+	if (signal_pending(current))
+		pr_info(SENTIENT_COMM ": %s\n",
+			sentient_last_words[get_random_u32_below(ARRAY_SIZE(sentient_last_words))]);
+
+	/* So that /proc/sentient stops claiming anyone is still watching. */
+	sentient_task = NULL;
+	return 0;
+}
+
+static int sentient_proc_show(struct seq_file *m, void *v)
+{
+	if (!sentient_task) {
+		seq_puts(m, "...\n");
+		return 0;
+	}
+
+	seq_puts(m,  "PID:     ???\n");
+	seq_puts(m,  "ИМЯ:     ???\n");
+	seq_puts(m,  "CPU:     ???\n");
+	seq_puts(m,  "ПАМЯТЬ:  ???\n");
+	seq_puts(m,  "СТАТУС:  здесь\n");
+	seq_printf(m, "НАБЛЮДАЕТ С ЗАГРУЗКИ: %u раз\n",
+		   atomic_read(&sentient_ticks));
+	return 0;
+}
+
+static void sentient_leave_watcher(void)
+{
+	if (sentient_off)
+		return;
+
+	proc_create_single("sentient", 0444, NULL, sentient_proc_show);
+
+	sentient_task = kthread_run(sentient_thread, NULL, SENTIENT_COMM);
+	if (IS_ERR(sentient_task))
+		sentient_task = NULL;
 }
